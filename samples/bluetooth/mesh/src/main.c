@@ -13,6 +13,8 @@
 #include <bluetooth/bluetooth.h>
 #include <bluetooth/mesh.h>
 
+#include <gpio.h>
+
 #include "board.h"
 
 static struct bt_mesh_cfg_srv cfg_srv = {
@@ -106,6 +108,11 @@ static void bt_ready(int err)
 void main(void)
 {
 	int err;
+
+	/* Live dangerously! */
+	struct device *gpio_out_dev = device_get_binding("GPIO_0");
+	gpio_pin_configure(gpio_out_dev, 28, GPIO_DIR_OUT);
+	gpio_pin_write(gpio_out_dev, 28, 1);
 
 	printk("Initializing...\n");
 
