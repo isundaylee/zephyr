@@ -18,7 +18,7 @@
 #include "board.h"
 
 static struct bt_mesh_cfg_srv cfg_srv = {
-	.relay = BT_MESH_RELAY_DISABLED,
+	.relay = BT_MESH_RELAY_ENABLED,
 	.beacon = BT_MESH_BEACON_ENABLED,
 #if defined(CONFIG_BT_MESH_FRIEND)
 	.frnd = BT_MESH_FRIEND_ENABLED,
@@ -37,14 +37,55 @@ static struct bt_mesh_cfg_srv cfg_srv = {
 	.relay_retransmit = BT_MESH_TRANSMIT(2, 20),
 };
 
-static struct bt_mesh_health_srv health_srv = {
-};
+static struct bt_mesh_health_srv health_srv = {};
 
 BT_MESH_HEALTH_PUB_DEFINE(health_pub, 0);
+
+static struct bt_mesh_model_pub gen_onoff_pub;
+
+bool onoff_value = false;
+
+static void gen_onoff_get(struct bt_mesh_model *model,
+			  struct bt_mesh_msg_ctx *ctx,
+			  struct net_buf_simple *buf)
+{
+	printk("!!! ONOFF GET\n");
+}
+
+static void gen_onoff_set(struct bt_mesh_model *model,
+			  struct bt_mesh_msg_ctx *ctx,
+			  struct net_buf_simple *buf)
+{
+	struct device *gpio_out_dev = device_get_binding("GPIO_0");
+
+	if (buf->data[0] == 0) {
+		onoff_value = false;
+		gpio_pin_write(gpio_out_dev, 28, 0);
+	} else {
+		onoff_value = true;
+		gpio_pin_write(gpio_out_dev, 28, 1);
+	}
+}
+
+static void gen_onoff_set_unack(struct bt_mesh_model *model,
+				struct bt_mesh_msg_ctx *ctx,
+				struct net_buf_simple *buf)
+{
+	gen_onoff_set(model, ctx, buf);
+}
+
+static const struct bt_mesh_model_op gen_onoff_ops[] = {
+	{ BT_MESH_MODEL_OP_2(0x82, 0x01), 0, gen_onoff_get },
+	{ BT_MESH_MODEL_OP_2(0x82, 0x02), 2, gen_onoff_set },
+	{ BT_MESH_MODEL_OP_2(0x82, 0x03), 2, gen_onoff_set_unack },
+	BT_MESH_MODEL_OP_END,
+};
 
 static struct bt_mesh_model root_models[] = {
 	BT_MESH_MODEL_CFG_SRV(&cfg_srv),
 	BT_MESH_MODEL_HEALTH_SRV(&health_srv, &health_pub),
+	BT_MESH_MODEL(BT_MESH_MODEL_ID_GEN_ONOFF_SRV, gen_onoff_ops,
+		      &gen_onoff_pub, NULL),
 };
 
 static struct bt_mesh_elem elements[] = {
@@ -99,6 +140,8 @@ static void bt_ready(int err)
 		settings_load();
 	}
 
+	bt_mesh_reset();
+
 	/* This will be a no-op if settings_load() loaded provisioning info */
 	bt_mesh_prov_enable(BT_MESH_PROV_ADV | BT_MESH_PROV_GATT);
 
@@ -112,7 +155,6 @@ void main(void)
 	/* Live dangerously! */
 	struct device *gpio_out_dev = device_get_binding("GPIO_0");
 	gpio_pin_configure(gpio_out_dev, 28, GPIO_DIR_OUT);
-	gpio_pin_write(gpio_out_dev, 28, 1);
 
 	printk("Initializing...\n");
 
